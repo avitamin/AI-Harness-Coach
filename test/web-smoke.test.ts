@@ -21,6 +21,7 @@ describe('Browser shell smoke', () => {
     try {
       const html = await textResponse(server, '/', 'text/html');
       assert.match(html, /AI Harness Coach/);
+      assert.match(html, /id="profileSelect"/);
       assert.match(html, /data-view="dashboard"/);
       assert.match(html, /data-view="sessions"/);
       assert.match(html, /data-view="output"/);
@@ -31,8 +32,12 @@ describe('Browser shell smoke', () => {
       assert.match(css, /\.metric-grid/);
 
       const js = await textResponse(server, '/app.js', 'text/javascript');
+      assert.match(js, /\/api\/profiles/);
       assert.match(js, /\/api\/dashboard/);
       assert.match(js, /\/api\/parser-coverage/);
+
+      const profiles = await jsonResponse(server, '/api/profiles');
+      assert.equal(profiles.profiles[0].id, 'default');
 
       const dashboard = await jsonResponse(server, '/api/dashboard');
       assert.equal(dashboard.totals.sessions, 1);

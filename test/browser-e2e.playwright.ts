@@ -13,8 +13,7 @@ test.describe('Browser e2e scenarios', () => {
   }) => {
     const fixture = await createE2eFixtureWorkspace();
     const state = new AppState({
-      roots: [fixture.root],
-      cacheDir: fixture.cacheDir
+      configPath: fixture.configPath
     });
     await state.initialize();
     const server = createHttpServer(state);
@@ -23,7 +22,8 @@ test.describe('Browser e2e scenarios', () => {
     try {
       const baseUrl = serverUrl(server);
       await page.goto(baseUrl);
-      await expect(page.locator('#status')).toContainText('3 sessions indexed from 1 roots');
+      await expect(page.locator('#profileSelect')).toHaveValue('default');
+      await expect(page.locator('#status')).toContainText('Default E2E: 3 sessions indexed from 1 roots');
       await expect(page.locator('#metrics')).toContainText('Sessions');
 
       await expect(page.locator('#dashboard')).toContainText(/3\s*Sessions/);
@@ -72,6 +72,17 @@ test.describe('Browser e2e scenarios', () => {
       await expect(page.locator('#health')).toContainText('future_event');
       await expect(page.locator('#health')).toContainText(fixture.root);
 
+      await page.locator('#profileSelect').selectOption('alternate');
+      await expect(page.locator('#status')).toContainText('Alternate E2E: 1 sessions indexed from 1 roots');
+      await expect(page.locator('#dashboard')).toContainText(/1\s*Sessions/);
+      await expect(page.locator('#recent')).toContainText('e2e-alternate');
+      await page.reload();
+      await expect(page.locator('#profileSelect')).toHaveValue('alternate');
+      await expect(page.locator('#recent')).toContainText('e2e-alternate');
+
+      await page.locator('#profileSelect').selectOption('default');
+      await expect(page.locator('#recent')).toContainText('e2e-complete');
+
       await fs.writeFile(
         path.join(fixture.root, 'e2e-reloaded.jsonl'),
         codexLines([
@@ -81,7 +92,7 @@ test.describe('Browser e2e scenarios', () => {
         ])
       );
       await page.locator('#reload').click();
-      await expect(page.locator('#status')).toContainText('4 sessions indexed from 1 roots');
+      await expect(page.locator('#status')).toContainText('Default E2E: 4 sessions indexed from 1 roots');
       await expect(page.locator('#recent')).toContainText('e2e-reloaded');
     } finally {
       server.close();
@@ -92,8 +103,11 @@ test.describe('Browser e2e scenarios', () => {
 async function createE2eFixtureWorkspace() {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ahc-e2e-'));
   const root = path.join(base, 'logs');
+  const alternateRoot = path.join(base, 'alternate-logs');
   const cacheDir = path.join(base, 'cache');
+  const configPath = path.join(base, 'config.json');
   await fs.mkdir(root, { recursive: true });
+  await fs.mkdir(alternateRoot, { recursive: true });
 
   await fs.writeFile(
     path.join(root, 'e2e-complete.jsonl'),
@@ -161,7 +175,27 @@ async function createE2eFixtureWorkspace() {
     ].join('\n')
   );
 
-  return { base, root, cacheDir };
+  await fs.writeFile(
+    path.join(alternateRoot, 'e2e-alternate.jsonl'),
+    codexLines([
+      meta('e2e-alternate', '2026-05-22T10:00:00.000Z', '/tmp/e2e-alternate', 'gpt-5.1'),
+      message('user_message', '2026-05-22T10:01:00.000Z', 'user', 'Alternate profile'),
+      message('assistant_message', '2026-05-22T10:02:00.000Z', 'assistant', 'Alternate done')
+    ])
+  );
+
+  await fs.writeFile(
+    configPath,
+    JSON.stringify({
+      cacheDir,
+      profiles: [
+        { id: 'default', name: 'Default E2E', roots: [root] },
+        { id: 'alternate', name: 'Alternate E2E', roots: [alternateRoot] }
+      ]
+    })
+  );
+
+  return { base, root, alternateRoot, cacheDir, configPath };
 }
 
 function meta(id: string, timestamp: string, cwd: string, model: string) {

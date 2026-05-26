@@ -16,7 +16,7 @@ describe('API, cache, and privacy behavior', () => {
 
     assertApi(await handleApiRequest(state, 'GET', '/api/health'), 200);
 
-    const reload = assertApi(await handleApiRequest(state, 'POST', '/api/reload'), 200);
+    const reload = assertApi(await handleApiRequest(state, 'POST', '/api/reload?profile=default'), 200);
     assert.equal(reload.sessionCount, 3);
 
     const status = assertApi(await handleApiRequest(state, 'GET', '/api/index/status'), 200);
@@ -71,7 +71,7 @@ describe('API, cache, and privacy behavior', () => {
   it('clears derived cache and does not persist raw prompt or response text', async () => {
     const fixture = await createFixtureWorkspace();
     const state = await createFixtureState(fixture);
-    const cacheFile = path.join(fixture.cacheDir, 'index.json');
+    const cacheFile = defaultProfileCacheFile(fixture.cacheDir);
 
     const cachedBeforeDetail = await fs.readFile(cacheFile, 'utf8');
     assert.equal(cachedBeforeDetail.includes('API detail text should stay out of cache'), false);
@@ -133,6 +133,88 @@ describe('API, cache, and privacy behavior', () => {
     assert.throws(() => resolveLoopbackHost('0.0.0.0'), /non-loopback/);
   });
 
+  it('loads configured profiles, isolates caches, and routes API requests by profile', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ahc-profiles-'));
+    const workRoot = path.join(base, 'work-logs');
+    const personalRoot = path.join(base, 'personal-logs');
+    const cacheDir = path.join(base, 'cache');
+    const configPath = path.join(base, 'config.json');
+    await fs.mkdir(workRoot, { recursive: true });
+    await fs.mkdir(personalRoot, { recursive: true });
+    await writeSession(workRoot, 'work-session', '/tmp/work-profile', 'gpt-5');
+    await writeSession(personalRoot, 'personal-session', '/tmp/personal-profile', 'gpt-5-mini');
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({
+        profiles: [
+          { id: 'work', name: 'Work Codex', roots: [workRoot] },
+          { id: 'personal', name: 'Personal Codex', roots: [personalRoot] }
+        ],
+        cacheDir
+      })
+    );
+
+    const config = await loadConfig({ configPath });
+    assert.deepEqual(
+      config.profiles.map((profile) => profile.id),
+      ['work', 'personal']
+    );
+    assert.equal(config.profiles[0].cacheDir, path.join(cacheDir, 'profiles', 'work'));
+
+    const state = new AppState({ configPath });
+    await state.initialize();
+
+    const profiles = assertApi(await handleApiRequest(state, 'GET', '/api/profiles'), 200);
+    assert.equal(profiles.activeProfileId, 'work');
+    assert.deepEqual(
+      profiles.profiles.map((profile) => [profile.id, profile.sessionCount]),
+      [
+        ['work', 1],
+        ['personal', 1]
+      ]
+    );
+
+    const workDashboard = assertApi(
+      await handleApiRequest(state, 'GET', '/api/dashboard?profile=work'),
+      200
+    );
+    const personalDashboard = assertApi(
+      await handleApiRequest(state, 'GET', '/api/dashboard?profile=personal'),
+      200
+    );
+    assert.equal(workDashboard.recentActivity[0].id, 'work-session');
+    assert.equal(personalDashboard.recentActivity[0].id, 'personal-session');
+
+    const personalDetail = assertApi(
+      await handleApiRequest(state, 'GET', '/api/sessions/personal-session?profile=personal'),
+      200
+    );
+    assert.equal(personalDetail.workspace, '/tmp/personal-profile');
+
+    const unknown = await handleApiRequest(state, 'GET', '/api/dashboard?profile=missing');
+    assert.equal(unknown.status, 404);
+
+    await fs.stat(path.join(cacheDir, 'profiles', 'work', 'index.json'));
+    await fs.stat(path.join(cacheDir, 'profiles', 'personal', 'index.json'));
+  });
+
+  it('keeps startup alive when a profile cannot write its derived cache', async () => {
+    const fixture = await createFixtureWorkspace();
+    const cacheFilePath = path.join(fixture.base, 'cache-as-file');
+    await fs.writeFile(cacheFilePath, 'not a directory');
+    const state = new AppState({
+      roots: [fixture.root],
+      cacheDir: cacheFilePath
+    });
+
+    await state.initialize();
+
+    const profiles = state.getProfiles();
+    assert.equal(profiles.profiles[0].id, 'default');
+    assert.equal(profiles.profiles[0].ready, false);
+    assert.match(profiles.profiles[0].error, /ENOTDIR/);
+  });
+
   it('does not modify source Codex JSONL files during reload or detail reads', async () => {
     const fixture = await createFixtureWorkspace();
     const sourceFile = path.join(fixture.root, 'api-complete.jsonl');
@@ -160,6 +242,33 @@ async function createFixtureState(fixture) {
   });
   await state.initialize();
   return state;
+}
+
+function defaultProfileCacheFile(cacheDir) {
+  return path.join(cacheDir, 'profiles', 'default', 'index.json');
+}
+
+async function writeSession(root, id, workspace, model) {
+  await fs.writeFile(
+    path.join(root, `${id}.jsonl`),
+    [
+      JSON.stringify({
+        type: 'session_meta',
+        timestamp: '2026-05-24T10:00:00.000Z',
+        payload: { id, cwd: workspace, model }
+      }),
+      JSON.stringify({
+        type: 'user_message',
+        timestamp: '2026-05-24T10:01:00.000Z',
+        payload: { role: 'user', content: `hello from ${id}` }
+      }),
+      JSON.stringify({
+        type: 'assistant_message',
+        timestamp: '2026-05-24T10:02:00.000Z',
+        payload: { role: 'assistant', content: `done ${id}` }
+      })
+    ].join('\n')
+  );
 }
 
 async function createFixtureWorkspace() {

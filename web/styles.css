@@ -30,6 +30,19 @@ select {
   padding: 20px 28px;
 }
 
+.topbar-actions {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+}
+
+.profile-control {
+  color: #b9c7ce;
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+
 h1,
 h2,
 p {
@@ -64,6 +77,16 @@ button {
 
 button:hover {
   border-color: #297373;
+}
+
+.topbar select {
+  background: #ffffff;
+  border: 1px solid #c8d0d4;
+  border-radius: 6px;
+  color: #1e2528;
+  min-height: 36px;
+  min-width: 180px;
+  padding: 7px 10px;
 }
 
 .tabs {
@@ -212,6 +235,7 @@ pre {
 
 @media (max-width: 850px) {
   .topbar,
+  .topbar-actions,
   .filters {
     align-items: stretch;
     flex-direction: column;

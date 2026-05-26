@@ -24,7 +24,34 @@ Default Codex roots:
 - `~/.codex/archived_sessions`
 - `~/.codex/archived-sessions`
 
-Optional additional roots can be added in `~/.ai-harness-coach/config.json`:
+Named log profiles can be added in `~/.ai-harness-coach/config.json`:
+
+```json
+{
+  "profiles": [
+    {
+      "id": "default",
+      "name": "Default Codex",
+      "roots": [
+        "~/.codex/sessions",
+        "~/.codex/archived_sessions",
+        "~/.codex/archived-sessions"
+      ]
+    },
+    {
+      "id": "work",
+      "name": "Work Codex",
+      "roots": ["/path/to/work/codex/jsonl/root"]
+    }
+  ]
+}
+```
+
+The browser profile selector stores the active profile id in `localStorage`.
+Each profile uses an isolated derived cache under the configured cache directory.
+
+For backward compatibility, optional additional roots can still be added without
+profiles:
 
 ```json
 {
@@ -45,6 +72,7 @@ The default cache directory is `~/.cache/ai-harness-coach`. Override with `AHC_C
 ## API
 
 - `GET /api/health`
+- `GET /api/profiles`
 - `GET /api/index/status`
 - `POST /api/reload`
 - `POST /api/cache/clear`
@@ -55,7 +83,12 @@ The default cache directory is `~/.cache/ai-harness-coach`. Override with `AHC_C
 - `GET /api/output-tokens`
 - `GET /api/anti-patterns`
 
-`GET /api/sessions` supports `search`, `from`, `to`, `workspace`, `model`, `status`, `limit`, and `offset` query parameters.
+Profile-aware endpoints accept `profile=<id>` as a query parameter. Without it,
+they use the default profile. `POST /api/reload?profile=<id>` reloads one
+profile; `POST /api/reload` reloads all profiles.
+
+`GET /api/sessions` also supports `search`, `from`, `to`, `workspace`, `model`,
+`status`, `limit`, and `offset` query parameters.
 
 ## Validation
 

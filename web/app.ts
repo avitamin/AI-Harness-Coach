@@ -1,6 +1,8 @@
 export {};
 
 const state = {
+  profiles: null,
+  activeProfileId: localStorage.getItem('ahc-active-profile') ?? 'default',
   dashboard: null,
   sessions: null,
   output: null,
@@ -9,14 +11,22 @@ const state = {
 };
 
 const statusEl = document.querySelector<HTMLElement>('#status');
+const profileSelect = document.querySelector<HTMLSelectElement>('#profileSelect');
 
 document.querySelectorAll<HTMLElement>('.tab').forEach((button) => {
   button.addEventListener('click', () => switchView(button.dataset.view));
 });
 
 document.querySelector<HTMLElement>('#reload').addEventListener('click', async () => {
-  statusEl.textContent = 'Reloading local Codex logs';
-  await api('/api/reload', { method: 'POST' });
+  const profile = activeProfile();
+  statusEl.textContent = `Reloading ${profile?.name ?? 'selected profile'} Codex logs`;
+  await api(withProfile('/api/reload'), { method: 'POST' });
+  await loadAll();
+});
+
+profileSelect.addEventListener('change', async () => {
+  state.activeProfileId = profileSelect.value;
+  localStorage.setItem('ahc-active-profile', state.activeProfileId);
   await loadAll();
 });
 
@@ -26,12 +36,16 @@ document.querySelector<HTMLSelectElement>('#statusFilter').addEventListener('cha
 await loadAll();
 
 async function loadAll() {
-  const status = await api('/api/index/status');
-  statusEl.textContent = `${status.sessionCount} sessions indexed from ${status.roots.length} roots`;
-  state.dashboard = await api('/api/dashboard');
-  state.output = await api('/api/output-tokens');
-  state.patterns = await api('/api/anti-patterns');
-  state.health = await api('/api/parser-coverage');
+  await loadProfiles();
+  const status = await api(withProfile('/api/index/status'));
+  statusEl.textContent = `${status.profileName}: ${status.sessionCount} sessions indexed from ${status.roots.length} roots`;
+  if (status.error) {
+    statusEl.textContent += ` - ${status.error}`;
+  }
+  state.dashboard = await api(withProfile('/api/dashboard'));
+  state.output = await api(withProfile('/api/output-tokens'));
+  state.patterns = await api(withProfile('/api/anti-patterns'));
+  state.health = await api(withProfile('/api/parser-coverage'));
   renderDashboard();
   renderOutput();
   renderPatterns();
@@ -45,8 +59,22 @@ async function loadSessions() {
   const status = document.querySelector<HTMLSelectElement>('#statusFilter').value;
   if (search) params.set('search', search);
   if (status) params.set('status', status);
-  state.sessions = await api(`/api/sessions?${params}`);
+  state.sessions = await api(withProfile(`/api/sessions?${params}`));
   renderSessions();
+}
+
+async function loadProfiles() {
+  state.profiles = await api('/api/profiles');
+  const profiles = state.profiles.profiles;
+  const active = profiles.find((profile) => profile.id === state.activeProfileId);
+  if (!active) {
+    state.activeProfileId = state.profiles.activeProfileId ?? profiles[0]?.id ?? 'default';
+    localStorage.setItem('ahc-active-profile', state.activeProfileId);
+  }
+  profileSelect.innerHTML = profiles
+    .map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`)
+    .join('');
+  profileSelect.value = state.activeProfileId;
 }
 
 function switchView(view) {
@@ -108,7 +136,7 @@ function renderSessions() {
 }
 
 async function openSession(id) {
-  const detail = await api(`/api/sessions/${encodeURIComponent(id)}`);
+  const detail = await api(withProfile(`/api/sessions/${encodeURIComponent(id)}`));
   document.querySelector('#sessionDetail').innerHTML = `
     <h2>${escapeHtml(detail.title ?? detail.id)}</h2>
     <p class="meta">${escapeHtml(detail.workspace ?? '(unknown workspace)')}</p>
@@ -164,8 +192,10 @@ function renderPatterns() {
 }
 
 function renderHealth() {
+  const profile = activeProfile();
   document.querySelector('#healthPanel').innerHTML = `
     <div class="metric-grid">
+      ${metric('Profile', profile?.name ?? state.activeProfileId)}
       ${metric('Files Seen', state.health.filesSeen)}
       ${metric('Files Parsed', state.health.filesParsed)}
       ${metric('Skipped Files', state.health.skippedFiles.length)}
@@ -194,6 +224,16 @@ async function api(path, options = undefined) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
+}
+
+function withProfile(path) {
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set('profile', state.activeProfileId);
+  return `${url.pathname}${url.search}`;
+}
+
+function activeProfile() {
+  return state.profiles?.profiles?.find((profile) => profile.id === state.activeProfileId);
 }
 
 function metric(label, value) {

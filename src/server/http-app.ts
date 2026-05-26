@@ -1,8 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildAntiPatterns, buildOutputTokens } from '../core/analytics.js';
-import type { AppState } from './app-state.js';
+import { UnknownProfileError, type AppState } from './app-state.js';
 
 const defaultPublicDir = path.resolve(process.cwd(), 'web');
 
@@ -54,20 +53,51 @@ export async function handleApiRequest(
   method: string | undefined,
   urlLike: string | URL
 ): Promise<ApiResponse | null> {
+  try {
+    return await handleApiRequestUnchecked(state, method, urlLike);
+  } catch (error) {
+    if (error instanceof UnknownProfileError) {
+      return { status: 404, body: { error: error.message } };
+    }
+    throw error;
+  }
+}
+
+async function handleApiRequestUnchecked(
+  state: AppState,
+  method: string | undefined,
+  urlLike: string | URL
+): Promise<ApiResponse | null> {
   const url = urlLike instanceof URL ? urlLike : new URL(urlLike, 'http://localhost');
+  const profileId = url.searchParams.get('profile') ?? undefined;
   if (url.pathname === '/api/health' && method === 'GET') {
     return { status: 200, body: { ok: true, service: 'ai-harness-coach' } };
   }
 
+  if (url.pathname === '/api/profiles' && method === 'GET') {
+    return { status: 200, body: state.getProfiles() };
+  }
+
   if (url.pathname === '/api/index/status' && method === 'GET') {
-    return { status: 200, body: state.getStatus() };
+    return { status: 200, body: state.getStatus(profileId) };
   }
 
   if (url.pathname === '/api/reload' && method === 'POST') {
-    const index = await state.reload();
+    if (!profileId) {
+      const indexes = await state.reloadAll();
+      return {
+        status: 200,
+        body: {
+          profileCount: indexes.length,
+          profiles: state.getProfiles().profiles
+        }
+      };
+    }
+    const index = await state.reload(profileId);
     return {
       status: 200,
       body: {
+        profileId,
         indexedAt: index.indexedAt,
         sessionCount: index.sessions.length,
         diagnostics: index.diagnostics
@@ -76,22 +106,22 @@ export async function handleApiRequest(
   }
 
   if (url.pathname === '/api/cache/clear' && method === 'POST') {
-    await state.clearCache();
+    await state.clearCache(profileId);
     return { status: 200, body: { cleared: true } };
   }
 
   if (url.pathname === '/api/dashboard' && method === 'GET') {
-    return { status: 200, body: state.getDashboard() };
+    return { status: 200, body: state.getDashboard(profileId) };
   }
 
   if (url.pathname === '/api/sessions' && method === 'GET') {
-    return { status: 200, body: state.getSessions(Object.fromEntries(url.searchParams)) };
+    return { status: 200, body: state.getSessions(Object.fromEntries(url.searchParams), profileId) };
   }
 
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (sessionMatch && method === 'GET') {
     const sessionId = sessionMatch[1];
-    const detail = await state.getSessionDetail(decodeURIComponent(sessionId));
+    const detail = await state.getSessionDetail(decodeURIComponent(sessionId), profileId);
     if (!detail) {
       return { status: 404, body: { error: 'Session not found' } };
     }
@@ -99,15 +129,15 @@ export async function handleApiRequest(
   }
 
   if (url.pathname === '/api/parser-coverage' && method === 'GET') {
-    return { status: 200, body: state.getParserCoverage() };
+    return { status: 200, body: state.getParserCoverage(profileId) };
   }
 
   if (url.pathname === '/api/output-tokens' && method === 'GET') {
-    return { status: 200, body: buildOutputTokens(state.index?.sessions ?? []) };
+    return { status: 200, body: state.getOutputTokens(profileId) };
   }
 
   if (url.pathname === '/api/anti-patterns' && method === 'GET') {
-    return { status: 200, body: { findings: buildAntiPatterns(state.index?.sessions ?? []) } };
+    return { status: 200, body: { findings: state.getAntiPatterns(profileId) } };
   }
 
   return null;
