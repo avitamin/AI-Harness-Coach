@@ -1,4 +1,13 @@
-export function buildDashboard(sessions) {
+import type { CodexSession } from './types.js';
+
+export type SessionQuery = Record<string, string | number | undefined>;
+
+interface CountEntry {
+  name: string;
+  count: number;
+}
+
+export function buildDashboard(sessions: CodexSession[]) {
   const activeDays = new Set();
   const workspaces = new Map();
   const models = new Map();
@@ -43,7 +52,7 @@ export function buildDashboard(sessions) {
   };
 }
 
-export function filterSessions(sessions, query) {
+export function filterSessions(sessions: CodexSession[], query: SessionQuery) {
   const search = String(query.search ?? '').trim().toLowerCase();
   const workspace = String(query.workspace ?? '').trim();
   const model = String(query.model ?? '').trim();
@@ -88,7 +97,7 @@ export function filterSessions(sessions, query) {
   });
 }
 
-export function buildOutputTokens(sessions) {
+export function buildOutputTokens(sessions: CodexSession[]) {
   const byModel = new Map();
   const warnings = [];
 
@@ -127,7 +136,7 @@ export function buildOutputTokens(sessions) {
   };
 }
 
-export function buildAntiPatterns(sessions) {
+export function buildAntiPatterns(sessions: CodexSession[]) {
   return sessions
     .flatMap((session) => {
       const findings = [];
@@ -148,7 +157,7 @@ export function buildAntiPatterns(sessions) {
     .slice(0, 100);
 }
 
-export function summarySession(session) {
+export function summarySession(session: CodexSession) {
   return {
     id: session.id,
     title: session.title,
@@ -175,18 +184,18 @@ export function summarySession(session) {
   };
 }
 
-function increment(map, key) {
+function increment(map: Map<string, number>, key: string) {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
 
-function topEntries(map, limit) {
+function topEntries(map: Map<string, number>, limit: number): CountEntry[] {
   return [...map.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([name, count]) => ({ name, count }));
 }
 
-function finding(session, type, message) {
+function finding(session: CodexSession, type: string, message: string) {
   return {
     sessionId: session.id,
     type,
@@ -196,7 +205,7 @@ function finding(session, type, message) {
   };
 }
 
-function hasValidationTool(session) {
+function hasValidationTool(session: CodexSession) {
   const text = [...session.tools, ...session.editedFiles].join(' ').toLowerCase();
   return /(test|lint|pint|phpstan|playwright|vitest|jest|karma|go test|pytest)/.test(text);
 }

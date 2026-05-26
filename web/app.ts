@@ -1,3 +1,5 @@
+export {};
+
 const state = {
   dashboard: null,
   sessions: null,
@@ -6,20 +8,20 @@ const state = {
   health: null
 };
 
-const statusEl = document.querySelector('#status');
+const statusEl = document.querySelector<HTMLElement>('#status');
 
-document.querySelectorAll('.tab').forEach((button) => {
+document.querySelectorAll<HTMLElement>('.tab').forEach((button) => {
   button.addEventListener('click', () => switchView(button.dataset.view));
 });
 
-document.querySelector('#reload').addEventListener('click', async () => {
+document.querySelector<HTMLElement>('#reload').addEventListener('click', async () => {
   statusEl.textContent = 'Reloading local Codex logs';
   await api('/api/reload', { method: 'POST' });
   await loadAll();
 });
 
-document.querySelector('#search').addEventListener('input', debounce(loadSessions, 250));
-document.querySelector('#statusFilter').addEventListener('change', loadSessions);
+document.querySelector<HTMLInputElement>('#search').addEventListener('input', debounce(loadSessions, 250));
+document.querySelector<HTMLSelectElement>('#statusFilter').addEventListener('change', loadSessions);
 
 await loadAll();
 
@@ -39,8 +41,8 @@ async function loadAll() {
 
 async function loadSessions() {
   const params = new URLSearchParams();
-  const search = document.querySelector('#search').value;
-  const status = document.querySelector('#statusFilter').value;
+  const search = document.querySelector<HTMLInputElement>('#search').value;
+  const status = document.querySelector<HTMLSelectElement>('#statusFilter').value;
   if (search) params.set('search', search);
   if (status) params.set('status', status);
   state.sessions = await api(`/api/sessions?${params}`);
@@ -48,7 +50,7 @@ async function loadSessions() {
 }
 
 function switchView(view) {
-  document.querySelectorAll('.tab').forEach((tab) => {
+  document.querySelectorAll<HTMLElement>('.tab').forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.view === view);
   });
   document.querySelectorAll('.view').forEach((section) => {
@@ -100,7 +102,7 @@ function renderSessions() {
     )
     .join('');
 
-  document.querySelectorAll('[data-session-id]').forEach((button) => {
+  document.querySelectorAll<HTMLElement>('[data-session-id]').forEach((button) => {
     button.addEventListener('click', () => openSession(button.dataset.sessionId));
   });
 }
@@ -186,7 +188,7 @@ function renderHealth() {
   `;
 }
 
-async function api(path, options) {
+async function api(path, options = undefined) {
   const response = await fetch(path, options);
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);

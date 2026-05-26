@@ -1,25 +1,44 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { buildAntiPatterns, buildOutputTokens } from '../core/analytics.js';
+import type { AppState } from './app-state.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const defaultPublicDir = path.resolve(__dirname, '../../web');
+const defaultPublicDir = path.resolve(process.cwd(), 'web');
 
-export function createHttpServer(state, options = {}) {
+interface HttpServerOptions {
+  publicDir?: string;
+}
+
+interface ApiResponse {
+  status: number;
+  body: unknown;
+}
+
+export function createHttpServer(state: AppState, options: HttpServerOptions = {}) {
   const publicDir = options.publicDir ?? defaultPublicDir;
 
   return http.createServer(async (request, response) => {
     try {
       await route({ request, response, state, publicDir });
     } catch (error) {
-      sendJson(response, 500, { error: error.message });
+      const message = error instanceof Error ? error.message : String(error);
+      sendJson(response, 500, { error: message });
     }
   });
 }
 
-async function route({ request, response, state, publicDir }) {
+async function route({
+  request,
+  response,
+  state,
+  publicDir
+}: {
+  request: http.IncomingMessage;
+  response: http.ServerResponse;
+  state: AppState;
+  publicDir: string;
+}): Promise<void> {
   const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
   const apiResponse = await handleApiRequest(state, request.method, url);
   if (apiResponse) {
@@ -30,7 +49,11 @@ async function route({ request, response, state, publicDir }) {
   await sendStatic(url.pathname, response, publicDir);
 }
 
-export async function handleApiRequest(state, method, urlLike) {
+export async function handleApiRequest(
+  state: AppState,
+  method: string | undefined,
+  urlLike: string | URL
+): Promise<ApiResponse | null> {
   const url = urlLike instanceof URL ? urlLike : new URL(urlLike, 'http://localhost');
   if (url.pathname === '/api/health' && method === 'GET') {
     return { status: 200, body: { ok: true, service: 'ai-harness-coach' } };
@@ -67,7 +90,8 @@ export async function handleApiRequest(state, method, urlLike) {
 
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (sessionMatch && method === 'GET') {
-    const detail = await state.getSessionDetail(decodeURIComponent(sessionMatch[1]));
+    const sessionId = sessionMatch[1];
+    const detail = await state.getSessionDetail(decodeURIComponent(sessionId));
     if (!detail) {
       return { status: 404, body: { error: 'Session not found' } };
     }
@@ -89,7 +113,11 @@ export async function handleApiRequest(state, method, urlLike) {
   return null;
 }
 
-async function sendStatic(requestPath, response, publicDir) {
+async function sendStatic(
+  requestPath: string,
+  response: http.ServerResponse,
+  publicDir: string
+): Promise<void> {
   const safePath = requestPath === '/' ? '/index.html' : requestPath;
   const candidate = path.resolve(publicDir, `.${safePath}`);
   if (!candidate.startsWith(publicDir)) {
@@ -102,7 +130,7 @@ async function sendStatic(requestPath, response, publicDir) {
     response.writeHead(200, { 'content-type': contentType(candidate) });
     response.end(content);
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if (isNodeError(error) && error.code === 'ENOENT') {
       const fallback = await fs.readFile(path.join(publicDir, 'index.html'));
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       response.end(fallback);
@@ -112,12 +140,12 @@ async function sendStatic(requestPath, response, publicDir) {
   }
 }
 
-function sendJson(response, status, data) {
+function sendJson(response: http.ServerResponse, status: number, data: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(data));
 }
 
-function contentType(filePath) {
+function contentType(filePath: string): string {
   if (filePath.endsWith('.css')) {
     return 'text/css; charset=utf-8';
   }
@@ -125,4 +153,8 @@ function contentType(filePath) {
     return 'text/javascript; charset=utf-8';
   }
   return 'text/html; charset=utf-8';
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
 }

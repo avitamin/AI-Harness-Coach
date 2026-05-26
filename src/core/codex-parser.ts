@@ -3,6 +3,16 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { assertTrustedPath, isInsideTrustedRoot } from './path-safety.js';
+import type {
+  CodexIndex,
+  CodexSession,
+  IndexDiagnostics,
+  MutableCodexSession,
+  SessionDetail,
+  SessionEvent,
+  SessionMessage,
+  SessionStatus
+} from './types.js';
 
 const SUPPORTED_TYPES = new Set([
   'session_meta',
@@ -17,9 +27,15 @@ const SUPPORTED_TYPES = new Set([
   'tool_call'
 ]);
 
-export async function indexCodexLogs({ roots, trustedRoots }) {
-  const files = [];
-  const diagnostics = {
+export async function indexCodexLogs({
+  roots,
+  trustedRoots
+}: {
+  roots: string[];
+  trustedRoots: string[];
+}): Promise<CodexIndex> {
+  const files: string[] = [];
+  const diagnostics: IndexDiagnostics = {
     roots,
     filesSeen: 0,
     filesParsed: 0,
@@ -38,7 +54,7 @@ export async function indexCodexLogs({ roots, trustedRoots }) {
     await collectJsonlFiles(root, trustedRoots, files, diagnostics);
   }
 
-  const sessions = [];
+  const sessions: CodexSession[] = [];
 
   for (const filePath of files) {
     diagnostics.filesSeen += 1;
@@ -47,10 +63,11 @@ export async function indexCodexLogs({ roots, trustedRoots }) {
       diagnostics.filesParsed += 1;
       sessions.push(session);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       diagnostics.skippedFiles.push({
         path: filePath,
         reason: 'parse_failed',
-        message: error.message
+        message
       });
     }
   }
@@ -66,10 +83,13 @@ export async function indexCodexLogs({ roots, trustedRoots }) {
   };
 }
 
-export async function readSessionDetail(session, trustedRoots) {
+export async function readSessionDetail(
+  session: CodexSession,
+  trustedRoots: string[]
+): Promise<SessionDetail> {
   await assertTrustedPath(session.source.path, trustedRoots);
-  const messages = [];
-  const events = [];
+  const messages: SessionMessage[] = [];
+  const events: SessionEvent[] = [];
   let lineNumber = 0;
 
   const input = fsSync.createReadStream(session.source.path, { encoding: 'utf8' });
@@ -82,7 +102,7 @@ export async function readSessionDetail(session, trustedRoots) {
     }
 
     try {
-      const record = JSON.parse(line);
+      const record = JSON.parse(line) as CodexRecord;
       const normalized = normalizeRecord(record);
       events.push({
         line: lineNumber,
@@ -108,15 +128,21 @@ export async function readSessionDetail(session, trustedRoots) {
   return { ...session, detailLoadedAt: new Date().toISOString(), messages, events };
 }
 
-async function collectJsonlFiles(root, trustedRoots, files, diagnostics) {
+async function collectJsonlFiles(
+  root: string,
+  trustedRoots: string[],
+  files: string[],
+  diagnostics: IndexDiagnostics
+): Promise<void> {
   let entries;
   try {
     entries = await fs.readdir(root, { withFileTypes: true });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     diagnostics.skippedFiles.push({
       path: root,
       reason: 'unreadable_directory',
-      message: error.message
+      message
     });
     return;
   }
@@ -139,7 +165,11 @@ async function collectJsonlFiles(root, trustedRoots, files, diagnostics) {
   }
 }
 
-async function parseCodexSessionFile(filePath, trustedRoots, diagnostics) {
+async function parseCodexSessionFile(
+  filePath: string,
+  trustedRoots: string[],
+  diagnostics: IndexDiagnostics
+): Promise<CodexSession> {
   const realPath = await assertTrustedPath(filePath, trustedRoots);
   const stat = await fs.stat(realPath);
   const session = createEmptySession(realPath, stat);
@@ -154,14 +184,15 @@ async function parseCodexSessionFile(filePath, trustedRoots, diagnostics) {
       continue;
     }
 
-    let record;
+    let record: CodexRecord;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line) as CodexRecord;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       diagnostics.invalidJsonLines.push({
         path: realPath,
         line: lineNumber,
-        message: error.message
+        message
       });
       session.parseWarnings.push({ line: lineNumber, reason: 'invalid_json' });
       continue;
@@ -180,17 +211,17 @@ async function parseCodexSessionFile(filePath, trustedRoots, diagnostics) {
     session.startedAt && session.endedAt
       ? new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()
       : null;
-  session.models = [...session.models].sort();
-  session.reasoningEfforts = [...session.reasoningEfforts].sort();
-  session.tools = [...session.tools].sort();
-  session.editedFiles = [...session.editedFiles].sort();
-  delete session.messageFingerprints;
   session.source.lineCount = lineNumber;
 
-  return session;
+  return finalizeSession(session);
 }
 
-function createEmptySession(filePath, stat) {
+type CodexRecord = Record<string, any>;
+
+function createEmptySession(
+  filePath: string,
+  stat: { mtime: Date; size: number }
+): MutableCodexSession {
   const fallbackId = path.basename(filePath, '.jsonl');
   return {
     id: fallbackId,
@@ -227,7 +258,17 @@ function createEmptySession(filePath, stat) {
   };
 }
 
-function applyRecord(session, record) {
+function finalizeSession(session: MutableCodexSession): CodexSession {
+  return {
+    ...session,
+    models: [...session.models].sort(),
+    reasoningEfforts: [...session.reasoningEfforts].sort(),
+    tools: [...session.tools].sort(),
+    editedFiles: [...session.editedFiles].sort()
+  };
+}
+
+function applyRecord(session: MutableCodexSession, record: CodexRecord): void {
   const normalized = normalizeRecord(record);
   if (normalized.timestamp) {
     session.startedAt = earlierDate(session.startedAt, normalized.timestamp);
@@ -297,7 +338,7 @@ function applyRecord(session, record) {
   }
 }
 
-function normalizeRecord(record) {
+function normalizeRecord(record: CodexRecord): { type: string; timestamp: string | null } {
   return {
     type:
       record.type ??
@@ -318,7 +359,7 @@ function normalizeRecord(record) {
   };
 }
 
-function applyTokenRecord(session, record) {
+function applyTokenRecord(session: MutableCodexSession, record: CodexRecord): void {
   const usage =
     record.usage ??
     record.token_count ??
@@ -357,33 +398,34 @@ function applyTokenRecord(session, record) {
   }
 }
 
-function collectTools(session, record) {
-  const stack = [record];
+function collectTools(session: MutableCodexSession, record: CodexRecord): void {
+  const stack: unknown[] = [record];
   while (stack.length) {
     const current = stack.pop();
     if (!current || typeof current !== 'object') {
       continue;
     }
+    const currentRecord = current as CodexRecord;
 
     const maybeTool =
-      current.tool ??
-      current.tool_name ??
-      current.name ??
-      current.call?.name ??
-      current.function?.name;
-    const type = current.type ?? current.kind;
+      currentRecord.tool ??
+      currentRecord.tool_name ??
+      currentRecord.name ??
+      currentRecord.call?.name ??
+      currentRecord.function?.name;
+    const type = currentRecord.type ?? currentRecord.kind;
     if (
       maybeTool &&
       typeof maybeTool === 'string' &&
       (String(type).includes('tool') ||
         String(type).includes('function') ||
-        current.arguments ||
-        current.input)
+        currentRecord.arguments ||
+        currentRecord.input)
     ) {
       session.tools.add(maybeTool);
     }
 
-    for (const value of Object.values(current)) {
+    for (const value of Object.values(currentRecord)) {
       if (Array.isArray(value)) {
         stack.push(...value);
       } else if (value && typeof value === 'object') {
@@ -393,7 +435,7 @@ function collectTools(session, record) {
   }
 }
 
-function collectEditedFiles(session, record) {
+function collectEditedFiles(session: MutableCodexSession, record: CodexRecord): void {
   for (const text of collectStrings(record)) {
     for (const match of text.matchAll(/(?:Update File|Add File|Delete File):\s*([^\n"']+)/g)) {
       const filePath = cleanPatchPath(match[1]);
@@ -423,7 +465,7 @@ function collectEditedFiles(session, record) {
   }
 }
 
-function extractRole(record) {
+function extractRole(record: CodexRecord): string | null {
   return (
     record.role ??
     record.message?.role ??
@@ -434,7 +476,7 @@ function extractRole(record) {
   );
 }
 
-function extractText(record) {
+function extractText(record: CodexRecord): string | null {
   const value =
     record.text ??
     record.content ??
@@ -455,7 +497,7 @@ function extractText(record) {
   return null;
 }
 
-function summarizeRecord(record) {
+function summarizeRecord(record: CodexRecord): string {
   const text = extractText(record);
   if (text) {
     return text.slice(0, 160);
@@ -467,7 +509,7 @@ function summarizeRecord(record) {
   return normalizeRecord(record).type;
 }
 
-function inferStatus(session) {
+function inferStatus(session: MutableCodexSession): SessionStatus {
   if (session.aborted) {
     return 'aborted';
   }
@@ -483,7 +525,7 @@ function inferStatus(session) {
   return 'complete';
 }
 
-function isAbortRecord(record, type) {
+function isAbortRecord(record: CodexRecord, type: string): boolean {
   const values = [
     type,
     record.status,
@@ -502,7 +544,7 @@ function isAbortRecord(record, type) {
   );
 }
 
-function messageFingerprint(record, role) {
+function messageFingerprint(record: CodexRecord, role: string): string | null {
   const text = extractText(record);
   const timestamp = normalizeRecord(record).timestamp;
   if (!text && !timestamp) {
@@ -511,7 +553,7 @@ function messageFingerprint(record, role) {
   return `${role}:${timestamp ?? ''}:${text ?? ''}`;
 }
 
-function earlierDate(current, candidate) {
+function earlierDate(current: string | null, candidate: string | null): string | null {
   if (!candidate) {
     return current;
   }
@@ -521,7 +563,7 @@ function earlierDate(current, candidate) {
   return new Date(candidate) < new Date(current) ? candidate : current;
 }
 
-function laterDate(current, candidate) {
+function laterDate(current: string | null, candidate: string | null): string | null {
   if (!candidate) {
     return current;
   }
@@ -531,7 +573,7 @@ function laterDate(current, candidate) {
   return new Date(candidate) > new Date(current) ? candidate : current;
 }
 
-function numberFromKeys(source, keys) {
+function numberFromKeys(source: unknown, keys: string[]): number {
   if (!source || typeof source !== 'object') {
     return 0;
   }
@@ -544,7 +586,11 @@ function numberFromKeys(source, keys) {
   return 0;
 }
 
-function findFirstString(record, keys, nestedKeys = []) {
+function findFirstString(
+  record: CodexRecord | undefined,
+  keys: string[],
+  nestedKeys: string[] = []
+): string | null {
   for (const key of keys) {
     if (typeof record?.[key] === 'string') {
       return record[key];
@@ -562,9 +608,9 @@ function findFirstString(record, keys, nestedKeys = []) {
   return null;
 }
 
-function findStringsByKey(record, wantedKeys) {
-  const results = [];
-  const stack = [record];
+function findStringsByKey(record: unknown, wantedKeys: Set<string>): string[] {
+  const results: string[] = [];
+  const stack: unknown[] = [record];
   while (stack.length) {
     const current = stack.pop();
     if (!current || typeof current !== 'object') {
@@ -584,11 +630,11 @@ function findStringsByKey(record, wantedKeys) {
   return results;
 }
 
-function looksLikeEditablePath(value) {
+function looksLikeEditablePath(value: string): boolean {
   return /\.(js|jsx|ts|tsx|json|md|css|html|py|go|php|rb|rs|java|kt|yml|yaml)$/i.test(value);
 }
 
-function cleanPatchPath(value) {
+function cleanPatchPath(value: string): string | null {
   const candidate = value.split(/\\n|\n|@@/)[0].trim();
   if (!candidate || candidate.length > 240 || /\s/.test(candidate)) {
     return null;
@@ -596,9 +642,9 @@ function cleanPatchPath(value) {
   return candidate;
 }
 
-function collectStrings(record) {
-  const results = [];
-  const stack = [record];
+function collectStrings(record: unknown): string[] {
+  const results: string[] = [];
+  const stack: unknown[] = [record];
   while (stack.length) {
     const current = stack.pop();
     if (typeof current === 'string') {
@@ -621,7 +667,7 @@ function collectStrings(record) {
   return results;
 }
 
-function parsePossibleJson(value) {
+function parsePossibleJson(value: string): unknown {
   const trimmed = value.trim();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
     return null;

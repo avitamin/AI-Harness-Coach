@@ -3,13 +3,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { buildDashboard, filterSessions } from '../src/core/analytics.js';
 import { indexCodexLogs, readSessionDetail } from '../src/core/codex-parser.js';
 import { resolveTrustedRoots } from '../src/core/path-safety.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixtureRoot = path.join(__dirname, 'fixtures', 'codex');
+const fixtureRoot = path.join(process.cwd(), 'test', 'fixtures', 'codex');
 
 describe('Codex parser', () => {
   it('streams JSONL sessions into derived analytics without raw message cache', async () => {

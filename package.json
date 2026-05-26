@@ -5,11 +5,17 @@
   "type": "module",
   "description": "Local-first Codex CLI analytics dashboard.",
   "scripts": {
-    "dev": "node src/server/index.js",
-    "start": "NODE_ENV=production node src/server/index.js",
-    "test": "node --test"
+    "build": "tsc && tsc -p tsconfig.web.json",
+    "dev": "npm run build && node dist/src/server/index.js",
+    "start": "NODE_ENV=production node dist/src/server/index.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json --noEmit"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
   }
 }

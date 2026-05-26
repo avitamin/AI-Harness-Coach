@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import type http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -72,40 +73,42 @@ async function createFixtureWorkspace() {
   return { root, cacheDir };
 }
 
-async function request(server, url) {
-  const request = new Readable({ read() {} });
+async function request(server: http.Server, url: string) {
+  const request = new Readable({ read() {} }) as http.IncomingMessage;
   request.url = url;
   request.method = 'GET';
   request.headers = { host: '127.0.0.1' };
   request.push(null);
-  let capturedResponse;
+  let capturedResponse: TestResponse | undefined;
 
-  await new Promise((resolve, reject) => {
-    const chunks = [];
+  await new Promise<void>((resolve, reject) => {
+    const chunks: Buffer[] = [];
     const response = new Writable({
       write(chunk, _encoding, callback) {
         chunks.push(Buffer.from(chunk));
         callback();
       }
-    });
-    response.writeHead = (status, headers) => {
+    }) as TestResponse;
+    response.writeHead = (status: number, headers?: Record<string, string>) => {
       response.statusCode = status;
-      response.headers = headers;
+      response.headers = headers ?? {};
       return response;
     };
-    response.end = (chunk) => {
+    response.end = (chunk?: unknown) => {
       if (chunk) {
-        chunks.push(Buffer.from(chunk));
+        chunks.push(Buffer.from(chunk as string | Buffer));
       }
       Writable.prototype.end.call(response);
+      return response;
     };
     response.once('finish', resolve);
     response.once('error', reject);
+    response.body = () => Buffer.concat(chunks).toString('utf8');
     capturedResponse = response;
     server.emit('request', request, response);
-    response.body = () => Buffer.concat(chunks).toString('utf8');
   });
 
+  assert.ok(capturedResponse);
   return {
     status: capturedResponse.statusCode,
     headers: capturedResponse.headers,
@@ -113,14 +116,23 @@ async function request(server, url) {
   };
 }
 
-async function textResponse(server, url, expectedContentType) {
+type TestResponse = Writable &
+  {
+    statusCode: number;
+    headers: Record<string, string>;
+    body: () => string;
+    writeHead: (status: number, headers?: Record<string, string>) => TestResponse;
+    end: (chunk?: unknown) => TestResponse;
+  };
+
+async function textResponse(server: http.Server, url: string, expectedContentType: string) {
   const response = await request(server, url);
   assert.equal(response.status, 200);
   assert.match(response.headers['content-type'], new RegExp(expectedContentType));
   return response.body;
 }
 
-async function jsonResponse(server, url) {
+async function jsonResponse(server: http.Server, url: string) {
   const response = await request(server, url);
   assert.equal(response.status, 200);
   assert.match(response.headers['content-type'], /application\/json/);

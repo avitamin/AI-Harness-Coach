@@ -1,9 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { SkippedPathDiagnostic } from './types.js';
 
-export async function resolveTrustedRoots(roots) {
-  const trustedRoots = [];
-  const skippedRoots = [];
+export async function resolveTrustedRoots(
+  roots: string[]
+): Promise<{ trustedRoots: string[]; skippedRoots: SkippedPathDiagnostic[] }> {
+  const trustedRoots: string[] = [];
+  const skippedRoots: SkippedPathDiagnostic[] = [];
 
   for (const root of roots) {
     const absoluteRoot = path.resolve(root);
@@ -15,10 +18,11 @@ export async function resolveTrustedRoots(roots) {
       }
       trustedRoots.push(await fs.realpath(absoluteRoot));
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       skippedRoots.push({
         path: absoluteRoot,
-        reason: error.code === 'ENOENT' ? 'missing' : 'unreadable',
-        message: error.message
+        reason: isNodeError(error) && error.code === 'ENOENT' ? 'missing' : 'unreadable',
+        message
       });
     }
   }
@@ -26,7 +30,7 @@ export async function resolveTrustedRoots(roots) {
   return { trustedRoots, skippedRoots };
 }
 
-export async function assertTrustedPath(candidatePath, trustedRoots) {
+export async function assertTrustedPath(candidatePath: string, trustedRoots: string[]): Promise<string> {
   const resolved = path.resolve(candidatePath);
   let realPath;
 
@@ -43,11 +47,15 @@ export async function assertTrustedPath(candidatePath, trustedRoots) {
   return realPath;
 }
 
-export function isInsideTrustedRoot(candidatePath, trustedRoots) {
+export function isInsideTrustedRoot(candidatePath: string, trustedRoots: string[]): boolean {
   const normalizedCandidate = path.resolve(candidatePath);
   return trustedRoots.some((root) => {
     const normalizedRoot = path.resolve(root);
     const relative = path.relative(normalizedRoot, normalizedCandidate);
     return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
   });
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error;
 }

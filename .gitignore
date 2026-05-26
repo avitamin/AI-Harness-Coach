@@ -1,5 +1,7 @@
 .local/
 node_modules/
+dist/
+web/app.js
 .cache/
 coverage/
 .playwright-cli/

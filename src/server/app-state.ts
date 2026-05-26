@@ -1,11 +1,19 @@
 import { clearCache, readCache, writeCache } from '../core/cache.js';
-import { loadConfig } from '../core/config.js';
-import { buildDashboard, filterSessions } from '../core/analytics.js';
+import { loadConfig, type AppConfig, type LoadConfigOptions } from '../core/config.js';
+import { buildDashboard, filterSessions, type SessionQuery } from '../core/analytics.js';
 import { indexCodexLogs, readSessionDetail } from '../core/codex-parser.js';
 import { resolveTrustedRoots } from '../core/path-safety.js';
+import type { CodexIndex, SessionDetail, SkippedPathDiagnostic } from '../core/types.js';
 
 export class AppState {
-  constructor(options = {}) {
+  options: LoadConfigOptions;
+  config: AppConfig | null;
+  trustedRoots: string[];
+  rootDiagnostics: SkippedPathDiagnostic[];
+  index: CodexIndex | null;
+  reloading: Promise<CodexIndex> | null;
+
+  constructor(options: LoadConfigOptions = {}) {
     this.options = options;
     this.config = null;
     this.trustedRoots = [];
@@ -14,7 +22,7 @@ export class AppState {
     this.reloading = null;
   }
 
-  async initialize() {
+  async initialize(): Promise<void> {
     this.config = await loadConfig({
       configPath: this.options.configPath,
       cacheDir: this.options.cacheDir,
@@ -29,12 +37,15 @@ export class AppState {
     }
   }
 
-  async reload() {
+  async reload(): Promise<CodexIndex> {
     if (this.reloading) {
       return this.reloading;
     }
 
     this.reloading = (async () => {
+      if (!this.config) {
+        throw new Error('AppState has not been initialized.');
+      }
       const index = await indexCodexLogs({
         roots: this.trustedRoots,
         trustedRoots: this.trustedRoots
@@ -69,7 +80,7 @@ export class AppState {
     return buildDashboard(this.index?.sessions ?? []);
   }
 
-  getSessions(query = {}) {
+  getSessions(query: SessionQuery = {}) {
     const sessions = filterSessions(this.index?.sessions ?? [], query);
     const limit = Math.max(1, Math.min(Number(query.limit ?? 50), 200));
     const offset = Math.max(0, Number(query.offset ?? 0));
@@ -81,7 +92,7 @@ export class AppState {
     };
   }
 
-  async getSessionDetail(id) {
+  async getSessionDetail(id: string): Promise<SessionDetail | null> {
     const session = this.index?.sessions?.find((candidate) => candidate.id === id);
     if (!session) {
       return null;
@@ -93,7 +104,10 @@ export class AppState {
     return this.index?.diagnostics ?? null;
   }
 
-  async clearCache() {
+  async clearCache(): Promise<void> {
+    if (!this.config) {
+      throw new Error('AppState has not been initialized.');
+    }
     await clearCache(this.config.cacheDir);
     this.index = null;
   }
