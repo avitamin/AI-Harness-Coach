@@ -62,3 +62,17 @@ The default cache directory is `~/.cache/ai-harness-coach`. Override with `AHC_C
 ```bash
 npm test
 ```
+
+The browser e2e suite uses Playwright. On a fresh machine, install the Chromium
+browser binary once:
+
+```bash
+npx playwright install chromium
+```
+
+Run suites separately when needed:
+
+```bash
+npm run test:unit
+npm run test:e2e
+```
