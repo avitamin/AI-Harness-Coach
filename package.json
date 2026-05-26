@@ -1,0 +1,15 @@
+{
+  "name": "ai-harness-coach",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first Codex CLI analytics dashboard.",
+  "scripts": {
+    "dev": "node src/server/index.js",
+    "start": "NODE_ENV=production node src/server/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

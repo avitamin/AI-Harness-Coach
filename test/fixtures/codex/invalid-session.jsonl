@@ -1,0 +1,3 @@
+{"type":"session_meta","timestamp":"2026-05-21T10:00:00.000Z","payload":{"id":"session-invalid","cwd":"/work/repo","model":"gpt-5-mini"}}
+{"type":"user_message","timestamp":"2026-05-21T10:01:00.000Z","payload":{"role":"user","content":"This one has a bad line"}}
+not json

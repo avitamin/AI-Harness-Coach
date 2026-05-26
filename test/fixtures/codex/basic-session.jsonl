@@ -1,0 +1,7 @@
+{"type":"session_meta","timestamp":"2026-05-20T10:00:00.000Z","payload":{"id":"session-basic","cwd":"/work/repo","model":"gpt-5"}}
+{"type":"user_message","timestamp":"2026-05-20T10:01:00.000Z","payload":{"role":"user","content":"Implement a small fix"}}
+{"type":"assistant_message","timestamp":"2026-05-20T10:02:00.000Z","payload":{"role":"assistant","content":"I will inspect the code."}}
+{"type":"tool_call","timestamp":"2026-05-20T10:03:00.000Z","tool_name":"apply_patch","payload":{"path":"src/app.js"}}
+{"type":"token_count","timestamp":"2026-05-20T10:04:00.000Z","usage":{"input_tokens":120,"output_tokens":80,"cached_input_tokens":20,"total_tokens":200}}
+{"type":"event_msg","timestamp":"2026-05-20T10:04:30.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":220,"cached_input_tokens":40,"output_tokens":90,"reasoning_output_tokens":10,"total_tokens":310},"last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10,"reasoning_output_tokens":10,"total_tokens":110}}}}
+{"type":"mystery_new_event","timestamp":"2026-05-20T10:05:00.000Z","payload":{"value":true}}

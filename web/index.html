@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Harness Coach</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>AI Harness Coach</h1>
+        <p id="status">Loading local Codex analytics</p>
+      </div>
+      <button id="reload" type="button">Reload</button>
+    </header>
+
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab active" data-view="dashboard" type="button">Dashboard</button>
+      <button class="tab" data-view="sessions" type="button">Sessions</button>
+      <button class="tab" data-view="output" type="button">Output/Tokens</button>
+      <button class="tab" data-view="patterns" type="button">Anti-Patterns</button>
+      <button class="tab" data-view="health" type="button">Data Health</button>
+    </nav>
+
+    <main>
+      <section id="dashboard" class="view active">
+        <div class="metric-grid" id="metrics"></div>
+        <div class="columns">
+          <section>
+            <h2>Recent Activity</h2>
+            <div id="recent"></div>
+          </section>
+          <section>
+            <h2>Top Signals</h2>
+            <div class="list-block" id="signals"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="sessions" class="view">
+        <div class="filters">
+          <input id="search" type="search" placeholder="Search sessions" />
+          <select id="statusFilter">
+            <option value="">All statuses</option>
+            <option value="complete">Complete</option>
+            <option value="partial">Partial</option>
+            <option value="incomplete">Incomplete</option>
+            <option value="aborted">Aborted</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+        <div class="session-layout">
+          <div id="sessionList" class="session-list"></div>
+          <aside id="sessionDetail" class="detail">Select a session</aside>
+        </div>
+      </section>
+
+      <section id="output" class="view">
+        <div class="columns">
+          <section>
+            <h2>Token Usage By Model</h2>
+            <div id="tokens"></div>
+          </section>
+          <section>
+            <h2>Coverage Warnings</h2>
+            <div id="tokenWarnings"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="patterns" class="view">
+        <div id="patternsList"></div>
+      </section>
+
+      <section id="health" class="view">
+        <div id="healthPanel"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
