@@ -38,6 +38,14 @@ describe('API, cache, and privacy behavior', () => {
     assert.equal(filtered.total, 1);
     assert.equal(filtered.sessions[0].id, 'api-complete');
 
+    const searched = assertApi(
+      await handleApiRequest(state, 'GET', '/api/sessions?search=incomplete&limit=1&offset=0'),
+      200
+    );
+    assert.equal(searched.total, 1);
+    assert.equal(searched.limit, 1);
+    assert.equal(searched.sessions[0].id, 'api-incomplete');
+
     const detail = assertApi(
       await handleApiRequest(state, 'GET', '/api/sessions/api-complete'),
       200
@@ -75,6 +83,24 @@ describe('API, cache, and privacy behavior', () => {
     assertApi(await handleApiRequest(state, 'POST', '/api/cache/clear'), 200);
     await assert.rejects(fs.stat(cacheFile), /ENOENT/);
     assert.equal(state.getStatus().ready, false);
+  });
+
+  it('loads a valid derived cache without reindexing source logs', async () => {
+    const fixture = await createFixtureWorkspace();
+    const initialState = await createFixtureState(fixture);
+    assert.equal(initialState.getStatus().sessionCount, 3);
+
+    await fs.rm(fixture.root, { recursive: true, force: true });
+    const cachedState = new AppState({
+      roots: [fixture.root],
+      cacheDir: fixture.cacheDir
+    });
+    await cachedState.initialize();
+
+    assert.equal(cachedState.getStatus().ready, true);
+    assert.equal(cachedState.getStatus().sessionCount, 3);
+    assert.equal(cachedState.getParserCoverage().filesParsed, 3);
+    assert.deepEqual(cachedState.getStatus().skippedRoots.map((entry) => entry.reason), ['missing']);
   });
 
   it('invalidates stale cache versions', async () => {

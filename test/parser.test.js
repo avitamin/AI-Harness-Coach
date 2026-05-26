@@ -112,6 +112,77 @@ describe('Codex parser', () => {
     assert.equal(session.tools.includes('exec_command'), true);
     assert.equal(session.editedFiles.includes('src/server/index.js'), true);
   });
+
+  it('normalizes alternate Codex token and message shapes without duplicating cumulative usage', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ahc-parser-shapes-'));
+    await fs.writeFile(
+      path.join(root, 'shapes.jsonl'),
+      [
+        JSON.stringify({
+          type: 'session_meta',
+          timestamp: '2026-05-24T10:00:00.000Z',
+          payload: { id: 'shape-session', cwd: '/work/shapes', model: 'gpt-5-codex' }
+        }),
+        JSON.stringify({
+          type: 'message',
+          timestamp: '2026-05-24T10:01:00.000Z',
+          message: {
+            role: 'user',
+            content: [{ type: 'input_text', text: 'array content request' }]
+          }
+        }),
+        JSON.stringify({
+          type: 'event_msg',
+          timestamp: '2026-05-24T10:02:00.000Z',
+          payload: {
+            info: {
+              total_token_usage: {
+                input_tokens: 10,
+                output_tokens: 5,
+                reasoning_output_tokens: 2,
+                total_tokens: 15
+              }
+            }
+          }
+        }),
+        JSON.stringify({
+          type: 'event_msg',
+          timestamp: '2026-05-24T10:03:00.000Z',
+          payload: {
+            info: {
+              total_token_usage: {
+                input_tokens: 20,
+                output_tokens: 10,
+                cached_input_tokens: 4,
+                reasoning_output_tokens: 3,
+                total_tokens: 30
+              }
+            }
+          }
+        }),
+        JSON.stringify({
+          type: 'assistant_message',
+          timestamp: '2026-05-24T10:04:00.000Z',
+          payload: { role: 'assistant', content: 'done' }
+        })
+      ].join('\n')
+    );
+
+    const { trustedRoots } = await resolveTrustedRoots([root]);
+    const index = await indexCodexLogs({ roots: trustedRoots, trustedRoots });
+    const session = index.sessions[0];
+    const detail = await readSessionDetail(session, trustedRoots);
+
+    assert.equal(session.hasTokenData, true);
+    assert.deepEqual(session.tokenTotals, {
+      input: 20,
+      output: 10,
+      cachedInput: 4,
+      reasoningOutput: 3,
+      total: 30
+    });
+    assert.equal(detail.messages[0].text, 'array content request');
+  });
 });
 
 describe('Analytics', () => {
