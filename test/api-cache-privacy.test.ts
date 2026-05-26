@@ -159,6 +159,7 @@ describe('API, cache, and privacy behavior', () => {
       config.profiles.map((profile) => profile.id),
       ['work', 'personal']
     );
+    assert.deepEqual(config.roots, [workRoot]);
     assert.equal(config.profiles[0].cacheDir, path.join(cacheDir, 'profiles', 'work'));
 
     const state = new AppState({ configPath });
@@ -213,6 +214,44 @@ describe('API, cache, and privacy behavior', () => {
     assert.equal(profiles.profiles[0].id, 'default');
     assert.equal(profiles.profiles[0].ready, false);
     assert.match(profiles.profiles[0].error, /ENOTDIR/);
+  });
+
+  it('reports reload-all partial failures through per-profile errors', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'ahc-reload-all-'));
+    const okRoot = path.join(base, 'ok-logs');
+    const brokenRoot = path.join(base, 'broken-logs');
+    const cacheDir = path.join(base, 'cache');
+    const configPath = path.join(base, 'config.json');
+    await fs.mkdir(okRoot, { recursive: true });
+    await fs.mkdir(brokenRoot, { recursive: true });
+    await fs.mkdir(path.join(cacheDir, 'profiles'), { recursive: true });
+    await fs.writeFile(path.join(cacheDir, 'profiles', 'broken'), 'not a directory');
+    await writeSession(okRoot, 'ok-session', '/tmp/ok-profile', 'gpt-5');
+    await writeSession(brokenRoot, 'broken-session', '/tmp/broken-profile', 'gpt-5-mini');
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({
+        profiles: [
+          { id: 'ok', name: 'OK Codex', roots: [okRoot] },
+          { id: 'broken', name: 'Broken Codex', roots: [brokenRoot] }
+        ],
+        cacheDir
+      })
+    );
+
+    const state = new AppState({ configPath });
+    await state.initialize();
+
+    const reload = assertApi(await handleApiRequest(state, 'POST', '/api/reload'), 200);
+    assert.equal(reload.profileCount, 1);
+    assert.equal(
+      reload.profiles.find((profile) => profile.id === 'ok').error,
+      null
+    );
+    assert.match(
+      reload.profiles.find((profile) => profile.id === 'broken').error,
+      /EEXIST|ENOTDIR/
+    );
   });
 
   it('does not modify source Codex JSONL files during reload or detail reads', async () => {

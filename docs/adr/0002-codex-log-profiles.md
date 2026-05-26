@@ -39,7 +39,8 @@ API defaults:
 - Existing profile-aware endpoints accept `profile=<id>`.
 - Omitting `profile` uses the default profile.
 - `POST /api/reload?profile=<id>` reloads one profile.
-- `POST /api/reload` reloads all profiles.
+- `POST /api/reload` reloads all profiles, keeps partial failures non-fatal, and
+  exposes per-profile errors through the returned profile list.
 
 ## Alternatives Considered
 

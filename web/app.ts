@@ -71,9 +71,9 @@ async function loadProfiles() {
     state.activeProfileId = state.profiles.activeProfileId ?? profiles[0]?.id ?? 'default';
     localStorage.setItem('ahc-active-profile', state.activeProfileId);
   }
-  profileSelect.innerHTML = profiles
-    .map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`)
-    .join('');
+  profileSelect.replaceChildren(
+    ...profiles.map((profile) => new Option(profile.name, profile.id))
+  );
   profileSelect.value = state.activeProfileId;
 }
 
@@ -254,6 +254,8 @@ function formatNumber(value) {
   return new Intl.NumberFormat().format(value ?? 0);
 }
 
+// Safe for HTML text nodes and quoted HTML attributes. Use DOM APIs for richer
+// contexts such as URLs, styles, scripts, or event handler attributes.
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')

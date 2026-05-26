@@ -218,7 +218,6 @@ export class AppState {
       }
     } catch (error) {
       profile.error = error instanceof Error ? error.message : String(error);
-      profile.reloading = null;
     }
   }
 

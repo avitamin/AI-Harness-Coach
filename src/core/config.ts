@@ -92,11 +92,13 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
   const profiles = Array.isArray(options.roots)
     ? [profileConfig('default', 'Default Codex', roots, cacheDir)]
     : buildProfiles(fileConfig, roots, cacheDir);
+  const legacyRoots =
+    profiles.find((profile) => profile.id === 'default')?.roots ?? profiles[0]?.roots ?? roots;
 
   return {
     configPath,
     cacheDir,
-    roots,
+    roots: legacyRoots,
     profiles
   };
 }

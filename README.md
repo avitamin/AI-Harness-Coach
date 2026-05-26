@@ -85,7 +85,9 @@ The default cache directory is `~/.cache/ai-harness-coach`. Override with `AHC_C
 
 Profile-aware endpoints accept `profile=<id>` as a query parameter. Without it,
 they use the default profile. `POST /api/reload?profile=<id>` reloads one
-profile; `POST /api/reload` reloads all profiles.
+profile; `POST /api/reload` reloads all profiles. Reload-all responses include
+the number of successfully reloaded profiles and the full profile list; callers
+should inspect each profile's `error` field to detect partial failures.
 
 `GET /api/sessions` also supports `search`, `from`, `to`, `workspace`, `model`,
 `status`, `limit`, and `offset` query parameters.
